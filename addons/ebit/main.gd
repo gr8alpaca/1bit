@@ -1,19 +1,18 @@
 @tool
 extends PanelContainer
 
-signal nest_in_bottom_dock(is_nested: bool)
-
-
 @export var files: Tree
 @export var editor: Control
+
 
 var dock_button: Button
 var floating_window: Window
 
+var parent_container: Control
 
 func _ready() -> void:
 
-	var editor_theme: Theme = EditorInterface.get_editor_theme()
+	var editor_theme: Theme = EditorInterface.get_editor_theme() if Engine.is_editor_hint() else Theme.new()
 
 
 	if Engine.is_editor_hint() and not EditorInterface.get_edited_scene_root() == self:
@@ -30,10 +29,16 @@ func _ready() -> void:
 
 	get_node(^"%Draw").icon = editor_theme.get_icon(&"Edit", &"EditorIcons")
 
+	get_node(^"%Add").pressed.connect(_on_add_pressed)
+
 
 	# var draw: Button = get_node(^"%Draw")
 	# var rect: Button = get_node(^"%Rectangle")
 	# var eraser: Button = get_node(^"%Eraser")
+
+
+func _on_add_pressed() -> void:
+	if files: files._on_add_pressed()
 
 
 func edit_bitmap(bitmap: BitMap) -> void:
@@ -43,20 +48,29 @@ func edit_bitmap(bitmap: BitMap) -> void:
 func _on_make_floating() -> void:
 	var plugin: EditorPlugin = Engine.get_singleton(&"eBit")
 	
-	if not plugin or plugin.editor != self:
+	if not plugin or plugin.main != self: # Added plugin.main check in case this is used in theme editor...
 		return
 		
 	if floating_window:
 		_on_window_close_requested()
 		return
 
+
 	get_node("%MakeFloating").hide()
-	var border_size := Vector2(4, 4) * EditorInterface.get_editor_scale()
-	get_parent().remove_child(self)
+
+	var output_button: Button = dock_button.get_parent().get_child(0)
+	output_button.set_pressed(true) if output_button else dock_button.set_pressed(false)
 	
+	dock_button.hide()
+	var border_size := Vector2(4, 4) * EditorInterface.get_editor_scale()
+	var window_position := global_position - border_size
+
+
+	parent_container.remove_child(self)
+
 	floating_window = Window.new()
 
-	var panel := Panel.new()
+	var panel: Panel = Panel.new()
 	panel.add_theme_stylebox_override(
 		"panel",
 		EditorInterface.get_base_control().get_theme_stylebox("PanelForeground", "EditorStyles")
@@ -73,31 +87,41 @@ func _on_make_floating() -> void:
 	margin.add_theme_constant_override("margin_bottom", border_size.y)
 	panel.add_child(margin)
 
-	floating_window.title = "Rational"
+	floating_window.title = "eBit Editor"
 	floating_window.wrap_controls = true
 	floating_window.min_size = Vector2i(600, 350)
 	floating_window.size = size
-	floating_window.position = EditorInterface.get_editor_main_screen().global_position
+	floating_window.position = window_position
 	floating_window.transient = true
 	floating_window.close_requested.connect(_on_window_close_requested)
-	
-	EditorInterface.set_main_screen_editor("2D")
+
 	EditorInterface.get_base_control().add_child(floating_window)
+
 
 
 func _on_window_close_requested() -> void:
 	get_parent().remove_child(self)
-	
-	EditorInterface.set_main_screen_editor("Rational")
-	nest_in_bottom_dock.emit(true)
-	var plugin: EditorPlugin = Engine.get_singleton(&"eBit")
+
 	floating_window.queue_free()
 	floating_window = null
+
+	parent_container.add_child(self)
+
 	get_node("%MakeFloating").show()
+	dock_button.show()
+
+
+# func _exit_tree() -> void:
+# 	print("Main exit tree..")
+
+
+# func _enter_tree() -> void:
+# 	print("Main enter tree..")
 
 
 func close() -> void:
-	if floating_window:
+	if floating_window: 
 		floating_window.queue_free()
-	else:
-		queue_free()
+
+	parent_container.queue_free()
+
